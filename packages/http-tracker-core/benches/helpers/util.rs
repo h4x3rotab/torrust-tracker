@@ -106,6 +106,7 @@ pub fn sample_announce_request_for_peer(peer: Peer) -> (Announce, ClientIpSource
         event: Some(peer.event.into()),
         compact: None,
         numwant: None,
+        ip: None,
     };
 
     let client_ip_sources = ClientIpSources {

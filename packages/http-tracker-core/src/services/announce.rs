@@ -79,7 +79,11 @@ impl AnnounceService {
 
         self.authorize(announce_request.info_hash).await?;
 
-        let remote_client_addr = resolve_remote_client_addr(&self.core_config.net.on_reverse_proxy.into(), client_ip_sources)?;
+        let remote_client_addr = if let Some(ip) = announce_request.ip {
+            RemoteClientAddr::new(ip, Some(announce_request.port))
+        } else {
+            resolve_remote_client_addr(&self.core_config.net.on_reverse_proxy.into(), client_ip_sources)?
+        };
 
         let mut peer = peer_from_request(announce_request, &remote_client_addr.ip());
 
@@ -288,6 +292,7 @@ mod tests {
             event: Some(peer.event.into()),
             compact: None,
             numwant: None,
+            ip: None,
         };
 
         let client_ip_sources = ClientIpSources {

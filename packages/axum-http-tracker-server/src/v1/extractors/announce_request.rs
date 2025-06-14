@@ -118,6 +118,7 @@ mod tests {
                 event: Some(Event::Completed),
                 compact: Some(Compact::NotAccepted),
                 numwant: Some(50),
+                ip: None,
             }
         );
     }

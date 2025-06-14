@@ -16,6 +16,7 @@ use torrust_tracker_primitives::peer;
 use crate::percent_encoding::{percent_decode_info_hash, percent_decode_peer_id};
 use crate::v1::query::{ParseQueryError, Query};
 use crate::v1::responses;
+use crate::v1::services::peer_ip_resolver::ResolvedIp;
 use crate::CurrentClock;
 
 // Query param names
@@ -28,6 +29,7 @@ const LEFT: &str = "left";
 const EVENT: &str = "event";
 const COMPACT: &str = "compact";
 const NUMWANT: &str = "numwant";
+const IP: &str = "ip";
 
 /// The `Announce` request. Fields use the domain types after parsing the
 /// query params of the request.
@@ -36,6 +38,9 @@ const NUMWANT: &str = "numwant";
 /// use aquatic_udp_protocol::{NumberOfBytes, PeerId};
 /// use bittorrent_http_tracker_protocol::v1::requests::announce::{Announce, Compact, Event};
 /// use bittorrent_primitives::info_hash::InfoHash;
+/// use bittorrent_http_tracker_protocol::v1::services::peer_ip_resolver::ResolvedIp;
+/// use std::net::IpAddr;
+/// use std::str::FromStr;
 ///
 /// let request = Announce {
 ///     // Mandatory params
@@ -48,7 +53,8 @@ const NUMWANT: &str = "numwant";
 ///     left: Some(NumberOfBytes::new(1)),
 ///     event: Some(Event::Started),
 ///     compact: Some(Compact::NotAccepted),
-///     numwant: Some(50)
+///     numwant: Some(50),
+///     ip: Some(ResolvedIp::FromSocketAddr(IpAddr::from_str("127.0.0.1").unwrap())),
 /// };
 /// ```
 ///
@@ -91,6 +97,10 @@ pub struct Announce {
     /// Number of peers that the client would receive from the tracker. The
     /// value is permitted to be zero.
     pub numwant: Option<u32>,
+
+    /// The IP address of the peer. This is an optional parameter.
+    /// When present, it indicates the source of the IP address (either from socket address or X-Forwarded-For header).
+    pub ip: Option<ResolvedIp>,
 }
 
 /// Errors that can occur when parsing the `Announce` request.
@@ -286,6 +296,7 @@ impl TryFrom<Query> for Announce {
             event: extract_event(&query)?,
             compact: extract_compact(&query)?,
             numwant: extract_numwant(&query)?,
+            ip: extract_ip(&query)?,
         })
     }
 }
@@ -406,6 +417,20 @@ fn extract_numwant(query: &Query) -> Result<Option<u32>, ParseAnnounceQueryError
     }
 }
 
+fn extract_ip(query: &Query) -> Result<Option<ResolvedIp>, ParseAnnounceQueryError> {
+    match query.get_param(IP) {
+        Some(raw_param) => {
+            let ip = IpAddr::from_str(&raw_param).map_err(|_| ParseAnnounceQueryError::InvalidParam {
+                param_name: IP.to_owned(),
+                param_value: raw_param.clone(),
+                location: Location::caller(),
+            })?;
+            Ok(Some(ResolvedIp::FromSocketAddr(ip)))
+        }
+        None => Ok(None),
+    }
+}
+
 /// It builds a `Peer` from the announce request.
 ///
 /// It ignores the peer address in the announce request params.
@@ -427,16 +452,18 @@ pub fn peer_from_request(announce_request: &Announce, peer_ip: &IpAddr) -> peer:
 
 #[cfg(test)]
 mod tests {
-
     mod announce_request {
+        use std::net::IpAddr;
+        use std::str::FromStr;
 
         use aquatic_udp_protocol::{NumberOfBytes, PeerId};
         use bittorrent_primitives::info_hash::InfoHash;
 
         use crate::v1::query::Query;
         use crate::v1::requests::announce::{
-            Announce, Compact, Event, COMPACT, DOWNLOADED, EVENT, INFO_HASH, LEFT, NUMWANT, PEER_ID, PORT, UPLOADED,
+            Announce, Compact, Event, COMPACT, DOWNLOADED, EVENT, INFO_HASH, IP, LEFT, NUMWANT, PEER_ID, PORT, UPLOADED,
         };
+        use crate::v1::services::peer_ip_resolver::ResolvedIp;
 
         #[test]
         fn should_be_instantiated_from_the_url_query_with_only_the_mandatory_params() {
@@ -463,6 +490,7 @@ mod tests {
                     event: None,
                     compact: None,
                     numwant: None,
+                    ip: None,
                 }
             );
         }
@@ -479,6 +507,7 @@ mod tests {
                 (EVENT, "started"),
                 (COMPACT, "0"),
                 (NUMWANT, "50"),
+                (IP, "127.0.0.1"),
             ])
             .to_string();
 
@@ -498,6 +527,7 @@ mod tests {
                     event: Some(Event::Started),
                     compact: Some(Compact::NotAccepted),
                     numwant: Some(50),
+                    ip: Some(ResolvedIp::FromSocketAddr(IpAddr::from_str("127.0.0.1").unwrap())),
                 }
             );
         }

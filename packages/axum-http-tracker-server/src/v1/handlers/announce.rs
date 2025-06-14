@@ -200,6 +200,7 @@ mod tests {
             event: None,
             compact: None,
             numwant: None,
+            ip: None,
         }
     }
 
